@@ -472,6 +472,50 @@ def api_start_backtest():
     return jsonify({"started": True})
 
 
+@bp.post("/api/free-data")
+def api_free_data():
+    """Import free Hugging Face 1m data (no Groww login), then run all combos."""
+    from . import free_data
+
+    if db_error():
+        return _api_error(db_error(), 503)
+    body = request.get_json(silent=True) or {}
+    try:
+        date_from = date.fromisoformat(body["from"])
+        date_to = date.fromisoformat(body["to"])
+        settings = RunSettings.from_dict(body)
+    except (KeyError, ValueError) as exc:
+        return _api_error(f"Please give valid dates and settings ({exc}).")
+    if date_from > date_to:
+        return _api_error("Start date must be on or before end date.")
+    if date_to - date_from > timedelta(days=400):
+        return _api_error("Please pick at most about one year per free-data import.")
+    app = current_app._get_current_object()
+    eng = engine()
+
+    def job(progress):
+        report = free_data.run_free_backtest(
+            eng, date_from, date_to, settings, progress
+        )
+        free_data.save_report(report)
+        summary_cache.clear()
+        return {"run_id": report["run_id"], "data_quality": report["summary"]}
+
+    if not app.extensions["jobs"].start("free_data", job):
+        return _api_error("A job is already running. Wait for it to finish.", 409)
+    return jsonify({"started": True})
+
+
+@bp.get("/api/free-data/report")
+def api_free_data_report():
+    from . import free_data
+
+    p = free_data.cache_dir() / "last_import_report.json"
+    if not p.exists():
+        return _api_error("No free-data import has run yet.", 404)
+    return current_app.response_class(p.read_text(), mimetype="application/json")
+
+
 @bp.get("/api/job")
 def api_job():
     st = dict(current_app.extensions["jobs"].state)
