@@ -38,7 +38,10 @@ class FakeSession(GrowwSession):
 
 @pytest.fixture
 def client():
-    app = create_app(FakeSession(api_key="k", totp_secret="JBSWY3DPEHPK3PXP"))
+    app = create_app(
+        FakeSession(api_key="k", totp_secret="JBSWY3DPEHPK3PXP"),
+        database_url="sqlite://",
+    )
     app.config["TESTING"] = True
     return app.test_client()
 
@@ -64,7 +67,9 @@ def test_logout(client):
 
 
 def test_missing_config_shows_setup():
-    app = create_app(GrowwSession(api_key=None, totp_secret=None))
+    app = create_app(
+        GrowwSession(api_key=None, totp_secret=None), database_url="sqlite://"
+    )
     html = app.test_client().get("/").get_data(as_text=True)
     assert "Setup needed" in html
 

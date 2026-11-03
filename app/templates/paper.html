@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Paper trading · 9/21 EMA{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="row-actions" style="justify-content:space-between">
+    <h2 style="margin:0">Paper trading</h2>
+    <span><span class="pill off" title="Live order placement is not built into this app">Live trading: off · not available</span></span>
+  </div>
+  <p class="muted">Runs the exact backtest rules on today's Groww prices and records simulated fills (same slippage and charges). No orders are ever sent to Groww. Each signal is filled 2 minutes later, once the option's 1-minute candle has closed, so paper results match the backtest. Starting mid-day replays today's signals from 09:15. Keep this Codespace open during market hours.</p>
+  <form id="paper-form">
+    <div class="form-grid">
+      <label class="field">Timeframe <select name="timeframe">{% for tf in timeframes %}<option value="{{ tf }}" {{ 'selected' if tf == 15 }}>{{ tf }}m</option>{% endfor %}</select></label>
+      <label class="field">Start <select name="start">{% for t in starts %}<option>{{ t }}</option>{% endfor %}</select></label>
+      <label class="field">Cutoff <select name="cutoff">{% for t in cutoffs %}<option {{ 'selected' if t == '14:30' }}>{{ t }}</option>{% endfor %}</select></label>
+    </div>
+    <div class="checks" style="margin-bottom:14px">
+      {% for m in modes %}<label><input type="checkbox" name="modes" value="{{ m }}" checked> {{ mode_labels[m] }}</label>{% endfor %}
+    </div>
+    <div class="row-actions">
+      <button class="btn" type="submit" id="start">Start paper trading</button>
+      <button class="btn ghost" type="button" id="stop">Stop</button>
+      <span class="muted" id="msg"></span>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Status</h2>
+  <div class="stats" id="stats"><div class="stat"><span>Loading…</span><b class="skeleton">—</b></div></div>
+  <div id="positions"></div>
+</section>
+
+<section class="card">
+  <h2>Activity</h2>
+  <div class="log" id="log">No activity yet.</div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='paper.js') }}"></script>{% endblock %}

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Backtest · 9/21 EMA{% endblock %}
+{% block head %}<script src="{{ url_for('static', filename='vendor/lightweight-charts.standalone.production.js') }}"></script>{% endblock %}
+{% block content %}
+<div class="filters" id="filters">
+  <label class="field">Run
+    <select id="f-run" aria-label="Backtest run"></select>
+  </label>
+  <div class="field">Timeframe
+    <div class="seg" id="f-tf" role="group" aria-label="Timeframe">
+      {% for tf in timeframes %}<button type="button" data-v="{{ tf }}">{{ tf }}m</button>{% endfor %}
+    </div>
+  </div>
+  <label class="field">Mode
+    <select id="f-mode">
+      {% for m in modes %}<option value="{{ m }}">{{ mode_labels[m] }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="field">Start
+    <select id="f-start">{% for t in starts %}<option>{{ t }}</option>{% endfor %}</select>
+  </label>
+  <label class="field">Cutoff
+    <select id="f-cutoff">{% for t in cutoffs %}<option>{{ t }}</option>{% endfor %}</select>
+  </label>
+  <label class="field">Outcome
+    <select id="f-outcome"><option value="all">All</option><option value="win">Winners</option><option value="loss">Losers</option></select>
+  </label>
+  <label class="field">Cross
+    <select id="f-cross"><option value="all">Any</option><option value="1">1st</option><option value="2">2nd</option><option value="3">3rd</option><option value="4+">4th+</option></select>
+  </label>
+</div>
+
+<div id="page-state" class="card hidden"></div>
+
+<div id="results">
+  <div class="modes" id="modes"></div>
+
+  <div class="kpis" id="kpis">
+    <div class="kpi"><span>Total trades</span><b id="k-trades" class="num">–</b><small id="k-wl"></small></div>
+    <div class="kpi"><span>Win rate</span><b id="k-winrate" class="num">–</b><small>net PnL &gt; 0</small></div>
+    <div class="kpi"><span>Net PnL</span><b id="k-net" class="num">–</b><small id="k-netsub"></small></div>
+    <div class="kpi"><span>Gross PnL</span><b id="k-gross" class="num">–</b><small id="k-friction"></small></div>
+    <div class="kpi"><span>Profit factor</span><b id="k-pf" class="num">–</b><small>wins ÷ losses (net)</small></div>
+    <div class="kpi"><span>Selected trade</span><b id="k-sel" class="num">–</b><small id="k-selsub">none selected</small></div>
+  </div>
+  <div class="kpis sub">
+    <div class="kpi"><span>Payoff ratio</span><b id="k-payoff" class="num">–</b></div>
+    <div class="kpi"><span>Expectancy / trade</span><b id="k-exp" class="num">–</b></div>
+    <div class="kpi"><span>Max drawdown</span><b id="k-dd" class="num">–</b></div>
+    <div class="kpi"><span>Max drawdown %</span><b id="k-ddp" class="num">–</b><small id="k-cap"></small></div>
+    <div class="kpi"><span>Avg win / avg loss</span><b id="k-avg" class="num">–</b></div>
+  </div>
+
+  <div class="workspace">
+    <aside class="card trade-list">
+      <div class="head"><h2 id="list-title">Trades</h2><span class="muted">↑ ↓ to move</span></div>
+      <div class="list" id="trade-list" tabindex="0" role="listbox" aria-label="Trades"></div>
+    </aside>
+
+    <section class="detail">
+      <div class="card meta" id="meta"><span class="muted">Select a trade to audit it.</span></div>
+      <div class="card">
+        <div class="chart-head">
+          <div class="seg" id="chart-src">
+            <button type="button" data-v="spot" class="on">NIFTY</button>
+            <button type="button" data-v="option">Option 1m</button>
+          </div>
+          <div class="legend" id="chart-legend">
+            <span><i style="background:var(--ema9)"></i>EMA 9</span>
+            <span><i style="background:var(--ema21)"></i>EMA 21</span>
+            <span>▲ entry · ▼ exit</span>
+          </div>
+        </div>
+        <div class="chart" id="chart"><div class="overlay hidden" id="chart-overlay"></div></div>
+      </div>
+      <div class="two">
+        <div class="card"><h2>Costs for this trade</h2><table class="cost" id="cost"><tr><td class="muted">No trade selected.</td></tr></table></div>
+        <div class="card"><h2>Equity curve (net)</h2><div class="chart small" id="equity"></div></div>
+      </div>
+    </section>
+  </div>
+
+  <details class="card" id="days-card">
+    <summary>Day log <span class="muted" id="days-sub"></span></summary>
+    <div class="scroll-x"><table id="days" class="tabular"></table></div>
+  </details>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='backtest.js') }}"></script>{% endblock %}

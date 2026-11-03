@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Data · 9/21 EMA{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Download &amp; run backtest</h2>
+  <p class="muted" style="margin-top:0">Pulls NIFTY 1-minute candles and the option contracts the strategy needs from Groww into Postgres, then runs every timeframe × window × mode. Anything already downloaded is skipped, so you can stop and resume. About 15 option requests per trading day; a 2-month range takes a few minutes the first time.</p>
+  <form id="bt-form">
+    <div class="form-grid">
+      <label class="field">From <input type="date" name="from" value="{{ default_from }}" required></label>
+      <label class="field">To <input type="date" name="to" value="{{ default_to }}" required></label>
+      <label class="field">Slippage % of premium <input type="number" name="slippage_pct_ui" step="0.01" min="0" value="{{ settings.slippage_pct * 100 }}"></label>
+      <label class="field">Slippage fixed points <input type="number" name="slippage_points" step="0.05" min="0" value="{{ settings.slippage_points }}"></label>
+      <label class="field">Lot size <input type="number" name="lot_size" min="1" value="{{ settings.lot_size }}"></label>
+      <label class="field">Lots <input type="number" name="lots" min="1" value="{{ settings.lots }}"></label>
+      <label class="field">Starting capital ₹ <input type="number" name="capital" min="1" step="1000" value="{{ settings.capital|int }}"></label>
+    </div>
+    <div class="row-actions">
+      <button class="btn" type="submit" data-download="1">Download &amp; run</button>
+      <button class="btn ghost" type="submit" data-download="0">Re-run on stored data</button>
+      <span class="muted">Needs <a href="{{ url_for('main.index') }}">Groww connected</a> for downloads.</span>
+    </div>
+  </form>
+  <div id="job" class="hidden" style="margin-top:16px">
+    <div class="row-actions"><b id="job-title">Working…</b><span class="muted num" id="job-count"></span></div>
+    <div class="progress"><div id="job-bar"></div></div>
+    <div class="muted" id="job-msg"></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Stored data</h2>
+  <div class="stats" id="data-stats" style="margin-bottom:0"><div class="stat"><span>Loading…</span><b class="skeleton">—</b></div></div>
+</section>
+
+<section class="card">
+  <h2>Runs</h2>
+  <div class="scroll-x"><table id="runs"><tr><td class="muted">Loading…</td></tr></table></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='data.js') }}"></script>{% endblock %}

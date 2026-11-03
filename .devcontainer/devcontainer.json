@@ -1,15 +1,13 @@
 {
   "name": "Groww Trading Project",
-  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "postCreateCommand": "pip install -r requirements-dev.txt",
   "postAttachCommand": "python run.py",
-  "containerEnv": {
-    "FLASK_HOST": "0.0.0.0",
-    "FLASK_PORT": "5000"
-  },
   "forwardPorts": [5000],
   "portsAttributes": {
-    "5000": { "label": "Groww Dashboard", "onAutoForward": "openBrowser" }
+    "5000": { "label": "9/21 EMA dashboard", "onAutoForward": "openBrowser" }
   },
   "secrets": {
     "GROWW_API_KEY": { "description": "API key of your Groww TOTP key" },
