@@ -1,0 +1,18 @@
+[project]
+name = "groww-trading-project"
+version = "0.1.0"
+description = "Personal Flask trading dashboard for a Groww account"
+requires-python = ">=3.10"
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,4 @@
+Flask>=3.0
+growwapi>=1.5
+pyotp>=2.9
+python-dotenv>=1.0

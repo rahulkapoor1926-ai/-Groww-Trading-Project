@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% macro label(key) -%}{{ key | replace('_', ' ') | capitalize }}{%- endmacro %}
+
+{% macro value(v) -%}
+  {%- if v is sameas true -%}<span class="pill yes">Yes</span>
+  {%- elif v is sameas false -%}<span class="pill no">No</span>
+  {%- elif v is number -%}{{ "{:,.2f}".format(v) if v is float else "{:,}".format(v) }}
+  {%- elif v is string -%}{{ v }}
+  {%- elif v is mapping -%}{{ table(v) }}
+  {%- elif v is iterable -%}{{ v | join(', ') if v else '—' }}
+  {%- elif v is none -%}—
+  {%- else -%}{{ v }}{%- endif -%}
+{%- endmacro %}
+
+{% macro table(d) -%}
+<table>
+  {% for k, v in d.items() %}
+    {% if v is mapping %}
+      <tr class="group"><th colspan="2">{{ label(k) }}</th></tr>
+      {% for k2, v2 in v.items() %}
+        <tr><td>{{ label(k2) }}</td><td class="num">{{ value(v2) }}</td></tr>
+      {% endfor %}
+    {% else %}
+      <tr><td>{{ label(k) }}</td><td class="num">{{ value(v) }}</td></tr>
+    {% endif %}
+  {% endfor %}
+</table>
+{%- endmacro %}
+
+{% block content %}
+{% if not session.configured %}
+  <section class="card warn">
+    <h2>Setup needed</h2>
+    <p>Add <code>GROWW_API_KEY</code> and <code>GROWW_TOTP_SECRET</code> to a
+       <code>.env</code> file in the project folder (copy <code>.env.example</code>),
+       then restart the app.</p>
+  </section>
+{% elif not session.logged_in %}
+  <section class="card center">
+    <h2>Connect your Groww account</h2>
+    <p>Logs in with your TOTP key and caches the access token until 6:00 AM IST.</p>
+    <form method="post" action="{{ url_for('main.login') }}">
+      <button class="btn">Connect to Groww</button>
+    </form>
+  </section>
+{% else %}
+  <p class="muted">Connected · token valid until {{ session.expires_at.strftime('%d %b, %I:%M %p') }} IST</p>
+
+  {% for e in errors %}<div class="flash error">{{ e }}</div>{% endfor %}
+
+  {% if margins %}
+  <section class="stats">
+    <div class="stat"><span>Available cash</span><b>₹{{ "{:,.2f}".format(margins.get('clear_cash') or 0) }}</b></div>
+    <div class="stat"><span>Margin used</span><b>₹{{ "{:,.2f}".format(margins.get('net_margin_used') or 0) }}</b></div>
+    <div class="stat"><span>Collateral available</span><b>₹{{ "{:,.2f}".format(margins.get('collateral_available') or 0) }}</b></div>
+  </section>
+  {% endif %}
+
+  {% if profile %}
+  <section class="card">
+    <h2>Profile</h2>
+    {{ table(profile) }}
+  </section>
+  {% endif %}
+
+  {% if margins %}
+  <section class="card">
+    <h2>Funds &amp; margins</h2>
+    {{ table(margins) }}
+  </section>
+  {% endif %}
+{% endif %}
+{% endblock %}

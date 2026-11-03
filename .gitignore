@@ -1,0 +1,21 @@
+# Secrets: never commit these
+.env
+keys.txt
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Groww SDK instrument cache
+*.csv
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
