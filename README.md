@@ -18,6 +18,23 @@ tests/              pytest tests (use a fake Groww client, no network)
 run.py              Start the dev server
 ```
 
+## Run it from your phone (GitHub Codespaces)
+
+No computer needed. Codespaces runs the app in the cloud and opens it in your
+phone's browser.
+
+1. **Add your keys as secrets** (once): on github.com go to your profile picture,
+   **Settings → Codespaces → New secret**. Add `GROWW_API_KEY`,
+   `GROWW_TOTP_SECRET` and `FLASK_SECRET_KEY`, and give each one access to this
+   repository.
+2. **Start it**: open this repo on github.com, tap **Code → Codespaces →
+   Create codespace on main**. The first start takes a few minutes.
+3. The app starts by itself. Open the **Ports** tab, tap the globe icon next to
+   port 5000, and tap **Connect to Groww**.
+
+Keep port 5000 **Private** (the default) so only you can open it. Stop the
+codespace when you're done (github.com/codespaces) to save free hours.
+
 ## 1. Get your Groww TOTP key
 
 1. Go to <https://groww.in/trade-api/api-keys> and create a key with the
