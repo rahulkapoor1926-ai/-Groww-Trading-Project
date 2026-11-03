@@ -72,3 +72,12 @@
   {% endif %}
 {% endif %}
 {% endblock %}
+
+{% block mainclass %}narrow{% endblock %}
+{% block topright %}
+  {% if session.logged_in %}
+    <form method="post" action="{{ url_for('main.logout') }}">
+      <button class="btn ghost sm">Disconnect</button>
+    </form>
+  {% endif %}
+{% endblock %}
