@@ -3,7 +3,7 @@
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
-  "postCreateCommand": "pip install -r requirements-dev.txt",
+  "postCreateCommand": "python -m pip install -r requirements-dev.txt",
   "postAttachCommand": "python run.py",
   "forwardPorts": [5000],
   "portsAttributes": {

@@ -1,3 +1,7 @@
+# Fixed project name: the repo name starts with "-", which Docker Compose
+# rejects as a project name, so Codespaces fell back to a recovery container.
+name: groww-trading
+
 # Codespaces runs two containers: the app (Python) and Postgres 16.
 # The app shares Postgres's network, so the database is at localhost:5432.
 services:
