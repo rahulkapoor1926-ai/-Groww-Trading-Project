@@ -177,31 +177,60 @@ def detect_end_labelled(times: list[datetime]) -> bool:
     return has_1530 and not has_0915
 
 
-def _date_filter(dataset, lo: date, hi: date):
-    import pyarrow as pa
-    import pyarrow.dataset as ds
-
-    col = "date" if "date" in dataset.schema.names else "timestamp"
-    f = ds.field(col).cast(pa.string())
-    return (f >= lo.isoformat()) & (f < (hi + timedelta(days=1)).isoformat())
-
-
 # --------------------------------------------------------------------------
 # Spot
 # --------------------------------------------------------------------------
+def _span(col) -> tuple[str, str] | None:
+    import pyarrow.compute as pc
+
+    try:
+        mm = pc.min_max(col).as_py()
+        a, b = to_ist(mm["min"]), to_ist(mm["max"])
+        return (a.isoformat(), b.isoformat()) if a and b else None
+    except Exception:  # noqa: BLE001 - only used for the report
+        return None
+
+
+def _clip_spot(table, lo: date, hi: date):
+    """Keep rows within a day either side of [lo, hi] (exact filtering happens
+    later in Python); falls back to the whole table if the column type is odd."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    col = table.column("timestamp")
+    try:
+        typ = col.type
+        a = datetime.combine(lo - timedelta(days=1), time(0))
+        b = datetime.combine(hi + timedelta(days=2), time(0))
+        if pa.types.is_timestamp(typ) and typ.tz:
+            a, b = a.replace(tzinfo=IST), b.replace(tzinfo=IST)
+        elif not pa.types.is_timestamp(typ):
+            return table
+        mask = pc.and_(
+            pc.greater_equal(col, pa.scalar(a, type=typ)),
+            pc.less(col, pa.scalar(b, type=typ)),
+        )
+        return table.filter(mask)
+    except Exception:  # noqa: BLE001
+        return table
+
+
 def read_spot(path: Path, lo: date, hi: date) -> tuple[list[tuple], dict]:
     """Return clean spot rows (ts, o, h, l, c, v) in [lo, hi] and stats."""
     import pyarrow.parquet as pq
 
     table = pq.read_table(path)
     names = table.schema.names
+    rows_in_file = table.num_rows
+    file_span = _span(table.column("timestamp")) if "timestamp" in names else None
+    table = _clip_spot(table, lo, hi)
     need = {"timestamp", "open", "high", "low", "close"}
     if not need <= set(names):
         raise FreeDataError(f"Spot file is missing columns {sorted(need - set(names))}")
     cols = {n: table.column(n).to_pylist() for n in need | ({"volume"} & set(names))}
     sym = table.column("symbol").to_pylist() if "symbol" in names else None
     stats = {
-        "rows_in_file": table.num_rows,
+        "rows_in_file": rows_in_file,
         "dropped_bad_ohlc": 0,
         "dropped_bad_time": 0,
         "duplicates": 0,
@@ -216,9 +245,8 @@ def read_spot(path: Path, lo: date, hi: date) -> tuple[list[tuple], dict]:
             )
     times = [to_ist(t) for t in cols["timestamp"]]
     valid_times = [t for t in times if t]
-    if valid_times:
-        stats["file_first"] = min(valid_times).isoformat()
-        stats["file_last"] = max(valid_times).isoformat()
+    if file_span:
+        stats["file_first"], stats["file_last"] = file_span
     shift = detect_end_labelled([t for t in valid_times if lo <= t.date() <= hi])
     if shift:
         stats["end_labelled_shifted"] = True
@@ -248,40 +276,86 @@ def read_spot(path: Path, lo: date, hi: date) -> tuple[list[tuple], dict]:
 # --------------------------------------------------------------------------
 # Options
 # --------------------------------------------------------------------------
-def open_options(paths: list[Path]):
-    import pyarrow.dataset as ds
+OPTION_COLUMNS = (
+    "timestamp",
+    "expiry",
+    "strike",
+    "option_type",
+    "open",
+    "high",
+    "low",
+    "close",
+)
 
-    dataset = ds.dataset([str(p) for p in paths], format="parquet")
-    need = {
-        "timestamp",
-        "expiry",
-        "strike",
-        "option_type",
-        "open",
-        "high",
-        "low",
-        "close",
-    }
-    missing = need - set(dataset.schema.names)
-    if missing:
-        raise FreeDataError(f"Options files are missing columns {sorted(missing)}")
-    return dataset
+
+class OptionFiles:
+    """The yearly option parquet files, read one row group at a time.
+
+    Row groups whose date statistics fall outside the requested range are
+    skipped without being read, so a 600+ MB file never sits in memory."""
+
+    def __init__(self, paths: list[Path]):
+        import pyarrow.parquet as pq
+
+        self.files = [pq.ParquetFile(str(p)) for p in paths]
+        self.names = list(self.files[0].schema_arrow.names)
+        missing = set(OPTION_COLUMNS) - set(self.names)
+        if missing:
+            raise FreeDataError(f"Options files are missing columns {sorted(missing)}")
+        self.day_col = "date" if "date" in self.names else "timestamp"
+
+    def _row_groups(self, pf, lo: date, hi: date) -> list[int]:
+        j = pf.schema_arrow.get_field_index(self.day_col)
+        keep = []
+        for i in range(pf.metadata.num_row_groups):
+            try:
+                st = pf.metadata.row_group(i).column(j).statistics
+                if st is not None and st.has_min_max:
+                    mn, mx = to_date(st.min), to_date(st.max)
+                    if (
+                        mn
+                        and mx
+                        and (mx < lo - timedelta(days=1) or mn > hi + timedelta(days=1))
+                    ):
+                        continue
+            except Exception:  # noqa: BLE001 - no usable stats: read the group
+                pass
+            keep.append(i)
+        return keep
+
+    def batches(self, columns: list[str], lo: date, hi: date):
+        import pyarrow.compute as pc
+
+        cols = list(dict.fromkeys([*columns, self.day_col]))
+        lo_s, hi_s = lo.isoformat(), hi.isoformat()
+        for pf in self.files:
+            for rg in self._row_groups(pf, lo, hi):
+                for b in pf.iter_batches(
+                    batch_size=131_072, row_groups=[rg], columns=cols, use_threads=False
+                ):
+                    day = _str10(b.column(self.day_col))
+                    b = b.filter(
+                        pc.and_(pc.greater_equal(day, lo_s), pc.less_equal(day, hi_s))
+                    )
+                    if b.num_rows:
+                        yield b
+
+
+def open_options(paths: list[Path]) -> OptionFiles:
+    return OptionFiles(paths)
 
 
 def option_universe(dataset, lo: date, hi: date) -> dict[date, set[tuple[int, str]]]:
     """{expiry: {(strike, CE/PE)}} for contracts that traded in [lo, hi]."""
-    t = dataset.to_table(
-        columns=["expiry", "strike", "option_type"],
-        filter=_date_filter(dataset, lo, hi),
-    )
-    t = t.group_by(["expiry", "strike", "option_type"]).aggregate([])
+    import pyarrow as pa
+
+    cols = ["expiry", "strike", "option_type"]
+    seen: set[tuple] = set()
+    for batch in dataset.batches(cols, lo, hi):
+        t = pa.Table.from_batches([batch]).group_by(cols).aggregate([])
+        seen.update(zip(*(t.column(c).to_pylist() for c in cols), strict=True))
     out: dict[date, set] = defaultdict(set)
-    for e, k, ot in zip(
-        t.column("expiry").to_pylist(),
-        t.column("strike").to_pylist(),
-        t.column("option_type").to_pylist(),
-        strict=True,
-    ):
+    for e, k, ot in seen:
         ed = to_date(e)
         if ed is None or k is None or opt_type(ot) is None:
             continue
@@ -290,17 +364,51 @@ def option_universe(dataset, lo: date, hi: date) -> dict[date, set[tuple[int, st
     return dict(out)
 
 
+_TYPE_ALIASES = {"CE": ("CE", "C", "CALL"), "PE": ("PE", "P", "PUT")}
+
+
+def _str10(arr):
+    """Date-like column -> 'YYYY-MM-DD' strings (vectorised)."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    return pc.utf8_slice_codeunits(pc.cast(arr, pa.string()), 0, 10)
+
+
+def _batch_keys(batch):
+    """'day|expiry|strike|TYPE' for every row of a record batch, in Arrow."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    names = batch.schema.names
+    day = _str10(batch.column("date" if "date" in names else "timestamp"))
+    exp = _str10(batch.column("expiry"))
+    k = pc.cast(
+        pc.cast(pc.cast(batch.column("strike"), pa.float64()), pa.int64(), safe=False),
+        pa.string(),
+    )
+    typ = pc.utf8_upper(
+        pc.utf8_trim_whitespace(pc.cast(batch.column("option_type"), pa.string()))
+    )
+    return pc.binary_join_element_wise(day, exp, k, typ, "|")
+
+
 def read_options(
     dataset, lo: date, hi: date, wanted: dict[tuple, str]
 ) -> tuple[dict, dict]:
-    """Rows for wanted (day, expiry, strike, type) -> {symbol: [rows]}."""
-    import pyarrow as pa
-    import pyarrow.dataset as ds
+    """Rows for wanted (day, expiry, strike, type) -> {symbol: [rows]}.
 
-    strikes = sorted({float(k[2]) for k in wanted})
-    flt = _date_filter(dataset, lo, hi) & ds.field("strike").cast(pa.float64()).isin(
-        strikes
-    )
+    Streams the files batch by batch and keeps only matching rows, so memory
+    stays small even for a full-year file."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    by_key: dict[str, str] = {}
+    for (d, e, k, t), sym in wanted.items():
+        for alias in _TYPE_ALIASES[t]:
+            by_key[f"{d.isoformat()}|{e.isoformat()}|{k}|{alias}"] = sym
+    value_set = pa.array(sorted(by_key))
+    names = dataset.names
     cols = [
         "timestamp",
         "expiry",
@@ -311,46 +419,54 @@ def read_options(
         "low",
         "close",
     ]
-    if "volume" in dataset.schema.names:
-        cols.append("volume")
+    cols += [c for c in ("date", "volume") if c in names]
     stats = {
         "dropped_bad_ohlc": 0,
         "dropped_bad_time": 0,
         "duplicates": 0,
         "end_labelled_shifted": False,
     }
-    table = dataset.to_table(columns=cols, filter=flt)
-    data = {c: table.column(c).to_pylist() for c in cols}
-    times = [to_ist(t) for t in data["timestamp"]]
-    shift = detect_end_labelled([t for t in times if t])
+    raw: list[tuple] = []  # (sym, ts, o, h, l, c, v)
+    if by_key:
+        for batch in dataset.batches(cols, lo, hi):
+            keys = _batch_keys(batch)
+            mask = pc.is_in(keys, value_set=value_set)
+            sub = batch.filter(mask)
+            if sub.num_rows == 0:
+                continue
+            kept = pc.filter(keys, mask).to_pylist()
+            d = {c: sub.column(c).to_pylist() for c in cols}
+            vol = d.get("volume") or [0] * sub.num_rows
+            for i, key in enumerate(kept):
+                raw.append(
+                    (
+                        by_key[key],
+                        to_ist(d["timestamp"][i]),
+                        d["open"][i],
+                        d["high"][i],
+                        d["low"][i],
+                        d["close"][i],
+                        vol[i],
+                    )
+                )
+    shift = detect_end_labelled([r[1] for r in raw if r[1]])
     stats["end_labelled_shifted"] = shift
     rows: dict[str, dict[datetime, tuple]] = defaultdict(dict)
-    for i, t in enumerate(times):
+    for sym, t, o, h, lw, c, v in raw:
         if t is None:
             stats["dropped_bad_time"] += 1
             continue
         if shift:
             t -= timedelta(minutes=1)
-        key = (
-            t.date(),
-            to_date(data["expiry"][i]),
-            int(float(data["strike"][i])),
-            opt_type(data["option_type"][i]),
-        )
-        sym = wanted.get(key)
-        if sym is None:
-            continue
         if not in_session(t) or t.second:
             stats["dropped_bad_time"] += 1
             continue
-        o, h, lw, c = (data[k][i] for k in ("open", "high", "low", "close"))
         if not ohlc_ok(o, h, lw, c):
             stats["dropped_bad_ohlc"] += 1
             continue
         if t in rows[sym]:
             stats["duplicates"] += 1
-        v = (data.get("volume") or [0] * len(times))[i] or 0
-        rows[sym][t] = (t, float(o), float(h), float(lw), float(c), float(v), None)
+        rows[sym][t] = (t, float(o), float(h), float(lw), float(c), float(v or 0), None)
     return {s: [r[k] for k in sorted(r)] for s, r in rows.items()}, stats
 
 
