@@ -130,6 +130,31 @@ the current TOTP code, exchanges it for an access token, and shows your
 profile and funds. The token is kept in memory until 6:00 AM IST, when Groww
 expires it; after that the app logs in again automatically.
 
+## Free historical data (no Groww login)
+
+Groww's free plan does not include historical candles. As an alternative, the
+Data page has **Import free data & run**, and the same thing runs in a terminal:
+
+```bash
+python -m app.free_data --from 2025-09-01 --to 2025-10-31
+```
+
+It downloads two public Hugging Face datasets into `data/free_cache/`:
+
+* NIFTY index 1-minute candles from `thetrademarkk/india-index-options-1m`
+  (`index/NIFTY.parquet`, CC BY-NC 4.0, non-commercial use only);
+* NIFTY option 1-minute candles from `rissin/nse-options-intraday`
+  (`upstox_intraday/NIFTY/NIFTY_<year>.parquet`, available from October 2024).
+
+The rows go into the same tables as Groww data, and all 189 combinations then
+run with the normal P&L, charges, slippage and drawdown code. Nothing is filled
+in: rows with bad prices or times are dropped and counted, and missing index
+days, incomplete days, strikes absent from the dataset, contract-days with no
+or few candles, and days without an expiry are listed in
+`data/free_cache/last_import_report.json` (also at `/api/free-data/report`).
+A trade whose strike is missing is skipped and logged as `no_contract`. Set
+`HF_TOKEN` if Hugging Face rate-limits you.
+
 ## Dev tools
 
 | Command | What it does |

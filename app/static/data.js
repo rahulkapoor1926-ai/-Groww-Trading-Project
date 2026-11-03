@@ -18,9 +18,10 @@
     const f = new FormData(e.target);
     const body = Object.fromEntries(f.entries());
     body.slippage_pct = (parseFloat(body.slippage_pct_ui) || 0) / 100; delete body.slippage_pct_ui;
-    body.download = submitter ? submitter.dataset.download === "1" : true;
+    const kind = submitter ? submitter.dataset.download : "1";
+    body.download = kind === "1";
     try {
-      await getJSON("/api/backtest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      await getJSON(kind === "free" ? "/api/free-data" : "/api/backtest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       poll();
     } catch (err) { showJob({ status: "error", message: err.message }); }
   });
@@ -32,11 +33,18 @@
     const pct = s.total ? Math.round((s.done / s.total) * 100) : busy ? 3 : 100;
     $("job-bar").style.width = pct + "%";
     $("job-bar").style.background = s.status === "error" ? "var(--neg)" : "";
-    const stage = { spot: "NIFTY candles", expiries: "Expiry calendar", contracts: "Contract lists", options: "Option candles", simulate: "Simulating" }[s.stage] || "Starting";
+    const stage = { spot: "NIFTY candles", expiries: "Expiry calendar", contracts: "Contract lists", options: "Option candles", simulate: "Simulating", download: "Downloading free data", validate: "Checking data", store: "Saving data" }[s.stage] || "Starting";
     $("job-title").textContent = s.status === "running" ? stage : s.status === "done" ? "Done" : s.status === "error" ? "Failed" : "Idle";
     $("job-count").textContent = s.total && busy ? `${n.format(s.done)} / ${n.format(s.total)}` : "";
     let msg = esc(s.message || "");
     if (s.status === "done" && s.result && s.result.run_id) msg = `Run #${s.result.run_id} is ready. <a href="/backtest?run=${s.result.run_id}">Open the dashboard →</a>`;
+    if (s.status === "done" && s.result && s.result.data_quality) {
+      const q = s.result.data_quality;
+      const warn = q.weekdays_without_data + q.incomplete_spot_days + q.strike_not_in_dataset + q.no_candles_that_day + q.sparse_contract_days + q.days_without_expiry;
+      msg += `<div style="margin-top:8px">Imported ${q.trading_days} trading days (${esc(q.first_day)} → ${esc(q.last_day)}), ${n.format(q.option_contract_days_imported)} of ${n.format(q.option_contract_days_needed)} option contract-days.` +
+        (warn ? ` <b>Data gaps:</b> ${q.weekdays_without_data} weekdays without index data, ${q.incomplete_spot_days} incomplete index days, ${q.strike_not_in_dataset} strikes not in dataset, ${q.no_candles_that_day} contract-days with no candles, ${q.sparse_contract_days} sparse, ${q.days_without_expiry} days without expiry.` : " No gaps found.") +
+        ` <a href="/api/free-data/report" target="_blank">Full report</a></div>`;
+    }
     if (s.status === "error" && /GROWW_API_KEY|TOTP|login|auth/i.test(s.message || "")) msg += ' · <a href="/">Connect Groww</a>';
     $("job-msg").innerHTML = msg;
   }

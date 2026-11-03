@@ -18,9 +18,11 @@
     <div class="row-actions">
       <button class="btn" type="submit" data-download="1">Download &amp; run</button>
       <button class="btn ghost" type="submit" data-download="0">Re-run on stored data</button>
-      <span class="muted">Needs <a href="{{ url_for('main.index') }}">Groww connected</a> for downloads.</span>
+      <button class="btn ghost" type="submit" data-download="free">Import free data &amp; run</button>
+      <span class="muted">Groww download needs <a href="{{ url_for('main.index') }}">Groww connected</a>. Free data needs no login.</span>
     </div>
   </form>
+  <p class="muted">Free data: NIFTY index 1m from <a href="https://huggingface.co/datasets/thetrademarkk/india-index-options-1m" target="_blank" rel="noopener">thetrademarkk/india-index-options-1m</a> (CC BY-NC 4.0) and NIFTY options 1m from <a href="https://huggingface.co/datasets/rissin/nse-options-intraday" target="_blank" rel="noopener">rissin/nse-options-intraday</a> (options from Oct 2024). Only rows in those files are stored; gaps are reported, never filled. Research use only.</p>
   <div id="job" class="hidden" style="margin-top:16px">
     <div class="row-actions"><b id="job-title">Working…</b><span class="muted num" id="job-count"></span></div>
     <div class="progress"><div id="job-bar"></div></div>
